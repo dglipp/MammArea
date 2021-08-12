@@ -1,0 +1,5 @@
+data
+source/__pycache__
+source/build
+source/dist
+source/*.spec

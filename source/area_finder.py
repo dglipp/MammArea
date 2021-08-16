@@ -1,8 +1,8 @@
-from numpy.core.fromnumeric import size
 import pydicom
 from skimage.filters import threshold_otsu
 from skimage.transform import resize
 import sys
+import PyQt5
 from PyQt5.QtWidgets import QLabel, QGridLayout, QWidget
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QPoint, QSize, Qt
@@ -53,7 +53,7 @@ class MouseCircle(QLabel):
         pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(QtCore.QPoint(self.rad, self.rad), int(self.rad/2), int(self.rad/2))
+        painter.drawEllipse(QtCore.QPoint(self.rad, self.rad), self.rad, self.rad)
 
 class MaskFrame(QtWidgets.QLabel):
     def __init__(self, width, height, img):
@@ -91,7 +91,7 @@ class MaskFrame(QtWidgets.QLabel):
                     painter = QtGui.QPainter(self.pix)
                     painter.setPen(Qt.NoPen)
                     painter.setBrush(QtGui.QBrush(self.brush_color, Qt.SolidPattern))
-                    painter.drawEllipse((self.draw_point - point)* self.scale, self.brush_radius, self.brush_radius)
+                    painter.drawEllipse((self.draw_point - point)* self.scale, self.brush_radius * self.scale, self.brush_radius * self.scale)
                     self.draw_point = None
 
             scaledPix = self.pix.scaled(size, Qt.KeepAspectRatio, transformMode = Qt.FastTransformation)
@@ -148,7 +148,7 @@ class Window(QtWidgets.QWidget):
 
     def createGridLayout(self):
         self.layout = QGridLayout()
-        test = pydicom.dcmread('/home/digileap/Projects/MammArea/data/mammo/4656975/2D_PROC/1.2.840.113619.2.401.101117117513079.17839180329091021.3.dcm')
+        test = pydicom.dcmread('data/mammo/4656975/2D_PROC/1.2.840.113619.2.401.101117117513079.17839180329091021.3.dcm')
         self.mmask = MaskFrame(300, 400, Mask(test.pixel_array))
 
         self.layout.addWidget(ImageFrame(300, 400, Drawable(test.pixel_array)),0,0)
@@ -204,7 +204,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.main_window.mmask.m_circle.move(event.pos() - self.main_window.pos() - self.main_window.mmask.pos() - QtCore.QPoint(rad, rad))
 
 def application():
-
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow(app.primaryScreen().availableGeometry())
     window.show()

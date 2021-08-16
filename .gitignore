@@ -3,3 +3,4 @@ source/__pycache__
 source/build
 source/dist
 source/*.spec
+**/.DS_Store

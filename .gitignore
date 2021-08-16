@@ -4,3 +4,4 @@ source/build
 source/dist
 source/*.spec
 **/.DS_Store
+.tmp

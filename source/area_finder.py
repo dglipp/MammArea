@@ -1,10 +1,10 @@
-from numpy.core.numeric import array_equal
+from re import A
 import pydicom
+import nibabel
 from skimage.filters import threshold_otsu
 from skimage.transform import resize
 from skimage import io
 import sys
-import time
 import os
 from pathlib import Path
 import shutil
@@ -13,8 +13,14 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QSize, Qt
 import numpy as np
 
+def is_inside(point, rect):
+    if point[0] < rect[0] or point[1] < rect[1] or point[0] > rect[2] or point[1] > rect[3]:
+        return False
+    return True
+
 class Drawable():
     def __init__(self, array):
+        self.dicom = array
         self.raw_img = array.pixel_array
         self.vox_dims = array[(0x0018, 0x1164)].value
         self.dims = list(self.raw_img.shape)
@@ -31,11 +37,6 @@ class Mask(Drawable):
         thresh = threshold_otsu(array.pixel_array)
         bin = (array.pixel_array > thresh) * 255
         self.raw_img = bin
-        
-def is_inside(point, rect):
-    if point[0] < rect[0] or point[1] < rect[1] or point[0] > rect[2] or point[1] > rect[3]:
-        return False
-    return True
 
 class MouseCircle(QLabel):
     def __init__(self, parent):
@@ -63,9 +64,11 @@ class MouseCircle(QLabel):
         painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(QtCore.QPoint(self.rad, self.rad), self.rad, self.rad)
 
+
 class MaskFrame(QtWidgets.QLabel):
     def __init__(self, width, height, img):
         super().__init__()
+        self.preferred_savedir = Path(os.path.expanduser('~'))
         self.setMouseTracking(True)
         self.is_drawing = False
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
@@ -143,6 +146,37 @@ class MaskFrame(QtWidgets.QLabel):
         os.remove(fn)
         return np.round(area, 2)
 
+    def save_image(self):
+        image = self.pix.toImage().convertToFormat(QtGui.QImage.Format_Grayscale8)
+        fn = f'.tmp/tmp_msk_{np.random.rand(1)}.png'
+        image.save(fn)
+        np_img = io.imread(fn)
+        np_img[np_img != 0] = 255
+        area = np.sum(np_img == 255) * self.dcm.vox_dims[0] * self.dcm.vox_dims[1]
+        os.remove(fn)
+        x, y = self.dcm.vox_dims
+        affine = np.array([[x, 0, 0, 0],
+                           [0, y, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])
+
+        mask = nibabel.Nifti1Image(np_img, affine=affine)
+        filepath = QtWidgets.QFileDialog.getSaveFileName(None, 'Save mask', 
+                                                         str(self.preferred_savedir / f'mask_{int(area)}.nii'),
+                                                         "Masks (*.nii);;Images (*.png *.jpg)")
+        
+        if filepath[0] != '':
+            savepath = Path(filepath[0])
+            if savepath.suffix == '.nii':
+                savepath = str(savepath) + '.gz'
+                nibabel.save(mask, savepath)
+            else:
+                try:
+                    image.save(savepath)
+                except:
+                    print('suffix not supported')
+
+
 class ImageFrame(QtWidgets.QLabel):
     def __init__(self, width, height, img):
         super().__init__()
@@ -207,6 +241,7 @@ class InitWindow(QtWidgets.QWidget):
 
     def createGridLayout(self):
         self.layout = QGridLayout()
+        self.layout.setContentsMargins(0,0,0,50)
         self.manual = QPushButton("Manual")
         self.auto = QPushButton("Automatic")
         self.manual.clicked.connect(self.parent_win.set_manual)
@@ -244,11 +279,13 @@ class AutoWindow(QtWidgets.QWidget):
             pass
         filepath = QtWidgets.QFileDialog.getExistingDirectory(None,
                                                     'Select folder',
-                                                    os.path.expanduser('~'),
+                                                    self.parent_win.preferred_folder,
                                                     QtWidgets.QFileDialog.ShowDirsOnly)
+        # modify preferred and perform calc
+
 
     def createGridLayout(self, path):
-        self.parent_win.resize(300, 300)
+        self.parent_win.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.parent_win.available_size.width()/2), int(self.parent_win.available_size.height()/2)), QSize(300, 300)))
         self.proot = path
         
         self.mg_paths = []
@@ -271,7 +308,7 @@ class AutoWindow(QtWidgets.QWidget):
             err.about(self, 'Error', "No MG Dicom files found!")
             self.parent_win.set_automatic()
         
-class MainWindow(QtWidgets.QWidget):
+class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, screen):
         super().__init__()
         self.title = 'MammArea'
@@ -279,21 +316,24 @@ class MainWindow(QtWidgets.QWidget):
         self.setWindowTitle(self.title)
         self.setMouseTracking(True)
 
+        self.preferred_folder = os.path.expanduser('~')
         self.stack = QtWidgets.QStackedLayout()
         self.manual_window = ManualWindow(self)
         self.auto_window = AutoWindow(self)
         self.stack.addWidget(InitWindow(self))
         self.stack.addWidget(self.manual_window)
         self.stack.addWidget(self.auto_window)
-
-        self.setLayout(self.stack)
+        self.dummy_window = QWidget()
+        self.dummy_window.setMouseTracking(True)
+        self.dummy_window.setLayout(self.stack)
         self.central = 'init'
-        self.resize(300, 300)
+        self.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.available_size.width()/2), int(self.available_size.height()/2)), QSize(300, 300)))
+        self.setCentralWidget(self.dummy_window)
 
     def set_manual(self):
         filepath = QtWidgets.QFileDialog.getOpenFileName(None,
                                                 'Select file',
-                                                os.path.expanduser('~'))
+                                                self.preferred_folder)
         if filepath:
             if filepath != ('', ''):
                 try:
@@ -301,10 +341,13 @@ class MainWindow(QtWidgets.QWidget):
                     self.create_manual_toolbar()
                     self.stack.setCurrentIndex(1)
                     self.central = 'manual'
-                except TypeError:
+                    self.preferred_folder = str(Path(filepath[0]).parent)
+                except TypeError as e:
+                    print(e)
                     err = QtWidgets.QMessageBox()
                     err.about(self, 'Error', 'Not a MG modality image!')
                 except Exception as e:
+                    print(e)
                     err = QtWidgets.QMessageBox()
                     err.about(self, 'Error', "Not a Dicom file!")
         else:
@@ -314,29 +357,31 @@ class MainWindow(QtWidgets.QWidget):
     def set_automatic(self):
         filepath = QtWidgets.QFileDialog.getExistingDirectory(None,
                                                                    'Select root folder',
-                                                                   os.path.expanduser('~'),
+                                                                   self.preferred_folder,
                                                                    QtWidgets.QFileDialog.ShowDirsOnly)
         if filepath:
+            self.preferred_folder = str(Path(filepath).parent)
             self.stack.setCurrentIndex(2)
             self.auto_window.createGridLayout(filepath)
             self.central = 'auto'
 
     def set_init(self):
-        self.init_window = InitWindow(self)
+        self.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.available_size.width()/2), int(self.available_size.height()/2)), QSize(300, 300)))
         self.stack.setCurrentIndex(0)
+        self.removeToolBar(self.editToolbar)
         self.central = 'init'
 
     def create_manual_toolbar(self):
-        editToolbar = self.addToolBar('Brush menu')
-        editToolbar.setIconSize(QtCore.QSize(50, 50))
+        self.editToolbar = self.addToolBar('Brush menu')
+        self.editToolbar.setIconSize(QtCore.QSize(50, 50))
 
         brushAction = QtWidgets.QAction(QtGui.QIcon('assets/brush.png'), 'Brush', self)
-        editToolbar.addAction(brushAction)
+        self.editToolbar.addAction(brushAction)
         brushAction.triggered.connect(lambda x: self.manual_window.mmask.set_brush_color(Qt.white))
         brushAction.triggered.connect(lambda x: self.manual_window.mmask.m_circle.set_pen_color(Qt.green))
 
         rubberAction = QtWidgets.QAction(QtGui.QIcon('assets/rubber.png'), 'Rubber', self)
-        editToolbar.addAction(rubberAction)
+        self.editToolbar.addAction(rubberAction)
         rubberAction.triggered.connect(lambda x: self.manual_window.mmask.set_brush_color(Qt.black))
         rubberAction.triggered.connect(lambda x: self.manual_window.mmask.m_circle.set_pen_color(Qt.red))
 
@@ -357,7 +402,15 @@ class MainWindow(QtWidgets.QWidget):
         vbox.addWidget(self.brushSizeLcd)
         vbox.addWidget(self.brushSizeSlider)
         sizeContainer.setLayout(vbox)
-        editToolbar.addWidget(sizeContainer)
+        self.editToolbar.addWidget(sizeContainer)
+
+        saveAction = QtWidgets.QAction(QtGui.QIcon('assets/save.png'), 'Save', self)
+        self.editToolbar.addAction(saveAction)
+        saveAction.triggered.connect(self.manual_window.mmask.save_image)
+        exitAction = QtWidgets.QAction(QtGui.QIcon('assets/exit.png'), 'Exit', self)
+        self.editToolbar.addAction(exitAction)
+        exitAction.triggered.connect(self.set_init)
+
 
     def wheelEvent(self, event):
         if self.central == 'manual':
@@ -366,12 +419,12 @@ class MainWindow(QtWidgets.QWidget):
             self.brushSizeSlider.setValue(rad)
             self.brushSizeLcd.display(rad)
             self.manual_window.mmask.m_circle.set_size(rad)
-            self.manual_window.mmask.m_circle.move(event.pos() - self.manual_window.pos() - self.manual_window.mmask.pos() - QtCore.QPoint(rad, rad))
+            self.manual_window.mmask.m_circle.move(event.pos() - self.dummy_window.pos() - self.manual_window.pos() - self.manual_window.mmask.pos() - QtCore.QPoint(rad, rad))
 
     def mouseMoveEvent(self, event):
         if self.central == 'manual':
             moved_evt = QtGui.QMouseEvent(event.type(), 
-                                        event.pos() - self.manual_window.pos() - self.manual_window.mmask.pos(),
+                                        event.pos() - self.dummy_window.pos() - self.manual_window.pos() - self.manual_window.mmask.pos(),
                                         event.button(), event.buttons(), Qt.NoModifier)
             self.manual_window.mmask.mouseMoveEvent(moved_evt)
 

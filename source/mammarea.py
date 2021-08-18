@@ -1,14 +1,15 @@
-from re import A
 import pydicom
 import nibabel
 from skimage.filters import threshold_otsu
 from skimage.transform import resize
 from skimage import io
+from PIL import Image
+import pandas as pd
 import sys
 import os
 from pathlib import Path
 import shutil
-from PyQt5.QtWidgets import QCheckBox, QLabel, QGridLayout, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QCheckBox, QLabel, QGridLayout, QPushButton, QWidget
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QSize, Qt
 import numpy as np
@@ -66,17 +67,16 @@ class MouseCircle(QLabel):
 
 
 class MaskFrame(QtWidgets.QLabel):
-    def __init__(self, width, height, img):
+    def __init__(self, width, height):
         super().__init__()
         self.preferred_savedir = Path(os.path.expanduser('~'))
         self.setMouseTracking(True)
         self.is_drawing = False
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.setFrameShape(QtWidgets.QFrame.Box)
-        self.dcm = img
+        self.dcm = None
         self.draw_point = None
-        self.pix = QtGui.QPixmap(self.dcm.get_drawable())
-        self.setPixmap(self.pix)
+        
         self.installEventFilter(self)
         self.brush_radius = 30
         self.brush_color = Qt.black
@@ -85,6 +85,11 @@ class MaskFrame(QtWidgets.QLabel):
         self.area_label_hook = None
         
         self.m_circle = MouseCircle(self)
+
+    def setImage(self, img):
+        self.dcm = Mask(img)
+        self.pix = QtGui.QPixmap(self.dcm.get_drawable())
+        self.setPixmap(self.pix)
 
     def paintEvent(self, event):
         if not self.pix.isNull():
@@ -120,11 +125,13 @@ class MaskFrame(QtWidgets.QLabel):
         self.repaint()
         self.m_circle.move(event.pos() - QtCore.QPoint(self.m_circle.rad, self.m_circle.rad))
         mouse_point = event.pos()
-
-        if is_inside((mouse_point.x(), mouse_point.y()), self.img_rect):
-            self.m_circle.show()
+        if self.img_rect:
+            if is_inside((mouse_point.x(), mouse_point.y()), self.img_rect):
+                self.m_circle.show()
+            else:
+                self.mouseReleaseEvent(event)
+                self.m_circle.hide()
         else:
-            self.mouseReleaseEvent(event)
             self.m_circle.hide()
 
     def mousePressEvent(self, event):
@@ -162,7 +169,7 @@ class MaskFrame(QtWidgets.QLabel):
 
         mask = nibabel.Nifti1Image(np_img, affine=affine)
         filepath = QtWidgets.QFileDialog.getSaveFileName(None, 'Save mask', 
-                                                         str(self.preferred_savedir / f'mask_{int(area)}.nii'),
+                                                         str(self.preferred_savedir / f'mask_{int(area)}mm2.nii'),
                                                          "Masks (*.nii);;Images (*.png *.jpg)")
         
         if filepath[0] != '':
@@ -172,21 +179,25 @@ class MaskFrame(QtWidgets.QLabel):
                 nibabel.save(mask, savepath)
             else:
                 try:
-                    image.save(savepath)
+                    image.save(str(savepath))
                 except:
-                    print('suffix not supported')
-
+                    err = QtWidgets.QMessageBox()
+                    err.about(self, 'Error', 'Extension not supported!')
 
 class ImageFrame(QtWidgets.QLabel):
-    def __init__(self, width, height, img):
+    def __init__(self, width, height):
         super().__init__()
         self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.setFrameShape(QtWidgets.QFrame.Box)
         self.setMouseTracking(True)
-        self.dcm = img
+        self.dcm = None
+
+        self.installEventFilter(self)
+
+    def setImage(self, img):
+        self.dcm = Drawable(img)
         self.pix = QtGui.QPixmap(self.dcm.get_drawable())
         self.setPixmap(self.pix)
-        self.installEventFilter(self)
 
     def paintEvent(self, event):
         if not self.pix.isNull():
@@ -203,14 +214,25 @@ class ManualWindow(QtWidgets.QWidget):
         super().__init__()
         self.setMouseTracking(True)
         self.parent_window = parent
+        self.idpacs_label = QLabel()
+        self.area_label = QLabel()
+        self.mimage = ImageFrame(300, 400)
+        self.mmask = MaskFrame(300, 400)
+
+        self.layout = QGridLayout()
+        self.layout.addWidget(self.idpacs_label, 0,0)
+        self.layout.addWidget(self.area_label, 0,1)
+        self.layout.addWidget(self.mimage,1,0)
+        self.layout.addWidget(self.mmask,1,1)
+        self.setLayout(self.layout)
 
     def createGridLayout(self, path):
-        self.layout = QGridLayout()
         img = pydicom.dcmread(path)
         if img.Modality != 'MG':
             raise TypeError('')
 
-        self.mmask = MaskFrame(300, 400, Mask(img))
+        self.mmask.setImage(img)
+        self.mimage.setImage(img)
         proj = None
         try:
             proj = str(img[(0x0045, 0x101b)].value)[2:-1]
@@ -220,18 +242,12 @@ class ManualWindow(QtWidgets.QWidget):
             proj = None
         screen = self.parent_window.available_size
         self.parent_window.setGeometry(screen.adjusted(int(screen.size().height()*0.1), int(screen.size().height()*0.1), int(-screen.size().width()*0.1), int(-screen.size().width()*0.1)))
-        self.idpacs_label = QLabel(f"ID PACS: {img.PatientID}\nAccession Number: {img.AccessionNumber}\nProjection: {proj}")
-        self.area_label = QLabel(f'Segmented area: {self.mmask.get_image_area()} \u339F')
+        self.idpacs_label.setText(f"ID PACS: {img.PatientID}\nAccession Number: {img.AccessionNumber}\nProjection: {proj}")
+        self.area_label.setText(f'Segmented area: {self.mmask.get_image_area()} \u339F')
         self.mmask.area_label_hook = self.area_label
         self.idpacs_label.setFixedHeight(60)
         self.area_label.setFixedHeight(60)
-
-        self.layout.addWidget(self.idpacs_label, 0,0)
-        self.layout.addWidget(self.area_label, 0,1)
-        self.layout.addWidget(ImageFrame(300, 400, Drawable(img)),1,0)
-        self.layout.addWidget(self.mmask,1,1)
-        self.setLayout(self.layout)
-
+        
 class InitWindow(QtWidgets.QWidget):
     def __init__(self, parent):
         super().__init__()
@@ -271,18 +287,62 @@ class AutoWindow(QtWidgets.QWidget):
         self.setLayout(self.layout)
 
     def calc(self):
-
+        df = {'IDPACS':[], 'Accession Number':[], 'Projection':[], 'Area':[]}
+        self.start_button.setDisabled(True)
         self.info.setText('Calculation ongoing...')
         self.progress.setValue(0)
         save = self.mask_box.isChecked()
-        for p in self.mg_paths:
-            pass
+        fn = Path(f'.tmp/save_{np.random.rand(1)}')
+        os.makedirs(fn, exist_ok=True)
+        l = len(self.mg_paths)
+        for i, p in enumerate(self.mg_paths):
+            dcm = pydicom.dcmread(p)
+            idpacs = dcm.PatientID
+            acc = dcm.AccessionNumber
+            proj = str(dcm[(0x0045, 0x101b)].value)[2:-1]
+
+            thresh = threshold_otsu(dcm.pixel_array)
+            bin = (dcm.pixel_array > thresh) * 255
+            vox_dims = dcm[(0x0018, 0x1164)].value
+            area = np.sum(bin == 255) * vox_dims[0] * vox_dims[1]
+            if save:
+                os.makedirs(fn / idpacs / acc, exist_ok=True)
+                Image.fromarray(bin).save(fn / idpacs / acc / f'{proj}_{int(area)}mm2.png')
+                x, y = vox_dims
+                affine = np.array([[x, 0, 0, 0],
+                                [0, y, 0, 0],
+                                [0, 0, 1, 0],
+                                [0, 0, 0, 1]])
+
+                mask = nibabel.Nifti1Image(bin, affine=affine)
+                nibabel.save(mask, fn / idpacs / acc / f'{proj}_{int(area)}mm2.nii.gz')
+            df['IDPACS'].append(idpacs)
+            df['Accession Number'].append(acc)
+            df['Projection'].append(proj)
+            df['Area'].append(np.round(area,2))
+            self.progress.setValue(int(i/l*100))
+        
+        self.progress.setValue(100)
+        pd.DataFrame(df).to_excel(fn / 'areas.xlsx')
+
         filepath = QtWidgets.QFileDialog.getExistingDirectory(None,
-                                                    'Select folder',
+                                                    'Select results data folder',
                                                     self.parent_win.preferred_folder,
                                                     QtWidgets.QFileDialog.ShowDirsOnly)
-        # modify preferred and perform calc
-
+        if filepath:
+            self.parent_win.preferred_folder = filepath
+            dest = Path(filepath) / f'results_{np.round(np.random.rand(1)*10000)}'
+            try:
+                shutil.move(fn, dest)
+                self.info.setText('Data saved correctly!')
+            except Exception as e:
+                print(e)
+                err = QtWidgets.QMessageBox()
+                err.about(self, 'Error', "Couldn't write here!")
+                self.info.setText('Retry...')
+        
+        self.start_button.setDisabled(False)
+        
 
     def createGridLayout(self, path):
         self.parent_win.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.parent_win.available_size.width()/2), int(self.parent_win.available_size.height()/2)), QSize(300, 300)))
@@ -355,6 +415,7 @@ class MainWindow(QtWidgets.QMainWindow):
             err.about(self, 'Error', "File path doesn't exist!")
 
     def set_automatic(self):
+        self.create_auto_toolbar()
         filepath = QtWidgets.QFileDialog.getExistingDirectory(None,
                                                                    'Select root folder',
                                                                    self.preferred_folder,
@@ -411,6 +472,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editToolbar.addAction(exitAction)
         exitAction.triggered.connect(self.set_init)
 
+    def create_auto_toolbar(self):
+        self.editToolbar = self.addToolBar('Auto menu')
+        exitAction = QtWidgets.QAction(QtGui.QIcon('assets/exit.png'), 'Exit', self)
+        self.editToolbar.addAction(exitAction)
+        exitAction.triggered.connect(self.set_init)
 
     def wheelEvent(self, event):
         if self.central == 'manual':
@@ -429,13 +495,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.manual_window.mmask.mouseMoveEvent(moved_evt)
 
 def application():
+    shutil.rmtree('.tmp', ignore_errors=True)
+    os.makedirs('.tmp', exist_ok=True)
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow(app.primaryScreen().availableGeometry())
     window.show()
     app.exec_()
+    shutil.rmtree('.tmp')
 
 if __name__ == "__main__":
-    #main(sys.argv[1])
-    os.makedirs('.tmp', exist_ok=True)
     application()
-    shutil.rmtree('.tmp')

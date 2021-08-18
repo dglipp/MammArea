@@ -167,7 +167,9 @@ class MaskFrame(QtWidgets.QLabel):
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
 
-        mask = nibabel.Nifti1Image(np_img, affine=affine)
+        mask = nibabel.Nifti1Image(np_img.T, affine=affine)
+        mask.set_sform(None, code=0)
+        mask.set_qform(None, code=0)
         filepath = QtWidgets.QFileDialog.getSaveFileName(None, 'Save mask', 
                                                          str(self.preferred_savedir / f'mask_{int(area)}mm2.nii'),
                                                          "Masks (*.nii);;Images (*.png *.jpg)")
@@ -314,7 +316,9 @@ class AutoWindow(QtWidgets.QWidget):
                                 [0, 0, 1, 0],
                                 [0, 0, 0, 1]])
 
-                mask = nibabel.Nifti1Image(bin, affine=affine)
+                mask = nibabel.Nifti1Image(bin.T, affine=affine)
+                mask.set_sform(None, code=0)
+                mask.set_qform(None, code=0)
                 nibabel.save(mask, fn / idpacs / acc / f'{proj}_{int(area)}mm2.nii.gz')
             df['IDPACS'].append(idpacs)
             df['Accession Number'].append(acc)

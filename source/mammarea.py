@@ -230,7 +230,10 @@ class ManualWindow(QtWidgets.QWidget):
 
     def createGridLayout(self, path):
         img = pydicom.dcmread(path)
-        if img.Modality != 'MG':
+        try:
+            if img.Modality != 'MG':
+                raise TypeError('')
+        except:
             raise TypeError('')
 
         self.mmask.setImage(img)
@@ -309,7 +312,7 @@ class AutoWindow(QtWidgets.QWidget):
             area = np.sum(bin == 255) * vox_dims[0] * vox_dims[1]
             if save:
                 os.makedirs(fn / idpacs / acc, exist_ok=True)
-                Image.fromarray(bin).save(fn / idpacs / acc / f'{proj}_{int(area)}mm2.png')
+                Image.fromarray(bin.astype(np.uint8)).save(fn / idpacs / acc / f'{proj}_{int(area)}mm2.png')
                 x, y = vox_dims
                 affine = np.array([[x, 0, 0, 0],
                                 [0, y, 0, 0],
@@ -335,7 +338,7 @@ class AutoWindow(QtWidgets.QWidget):
                                                     QtWidgets.QFileDialog.ShowDirsOnly)
         if filepath:
             self.parent_win.preferred_folder = filepath
-            dest = Path(filepath) / f'results_{np.round(np.random.rand(1)*10000)}'
+            dest = Path(filepath) / f'results_{int(np.random.rand(1)*10000)}'
             try:
                 shutil.move(fn, dest)
                 self.info.setText('Data saved correctly!')
@@ -360,10 +363,13 @@ class AutoWindow(QtWidgets.QWidget):
         for i, p in enumerate(path_list):
             self.progress.setValue(int((i+1)/l*100))
             dcm = pydicom.dcmread(p, stop_before_pixels=True)
-            if dcm.Modality == 'MG':
-                id.append(dcm.PatientID)
-                acc.append(dcm.AccessionNumber)
-                self.mg_paths.append(p)
+            try:
+                if dcm.Modality == 'MG':
+                    id.append(dcm.PatientID)
+                    acc.append(dcm.AccessionNumber)
+                    self.mg_paths.append(p)
+            except:
+                pass
 
         self.progress.setValue(100)
         self.info.setText(f'Read \t{len(self.mg_paths)} images\n\t{len(np.unique(id))} IDs\n\t{len(np.unique(acc))} Accession Numbers')
@@ -429,6 +435,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.stack.setCurrentIndex(2)
             self.auto_window.createGridLayout(filepath)
             self.central = 'auto'
+        else:
+            self.set_init()
 
     def set_init(self):
         self.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.available_size.width()/2), int(self.available_size.height()/2)), QSize(300, 300)))
@@ -499,12 +507,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.manual_window.mmask.mouseMoveEvent(moved_evt)
 
 def application():
+    os.chdir(Path(__file__).parent)
     shutil.rmtree('.tmp', ignore_errors=True)
     os.makedirs('.tmp', exist_ok=True)
     app = QtWidgets.QApplication(sys.argv)
+    app.setWindowIcon(QtGui.QIcon('dgl.ico'))
     window = MainWindow(app.primaryScreen().availableGeometry())
     window.show()
-    app.exec_()
+    app.exec()
     shutil.rmtree('.tmp')
 
 if __name__ == "__main__":

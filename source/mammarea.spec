@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(['mammarea.py'],
-             pathex=['/Users/giosue/projects/MammArea/source'],
+             pathex=['C:\\Users\\LIPPOLISD\\Desktop\\MammArea\\source'],
              binaries=[],
              datas=[('../assets', 'assets')],
              hiddenimports=[],
@@ -24,7 +24,7 @@ exe = EXE(pyz,
           a.scripts, 
           [],
           exclude_binaries=True,
-          name='mammarea',
+          name='MammArea',
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
@@ -33,7 +33,9 @@ exe = EXE(pyz,
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,
-          entitlements_file=None )
+          entitlements_file=None,
+          icon='dgl.ico')
+          
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
@@ -41,4 +43,4 @@ coll = COLLECT(exe,
                strip=False,
                upx=True,
                upx_exclude=[],
-               name='mammarea')
+               name='MammArea')

@@ -14,6 +14,13 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QSize, Qt
 import numpy as np
 
+try:
+    from PyQt5.QtWinExtras import QtWin
+    id = 'com.digileap.mammarea'
+    QtWin.setCurrentProcessExplicitAppUserModelID(id)
+except ImportError:
+    pass
+
 def is_inside(point, rect):
     if point[0] < rect[0] or point[1] < rect[1] or point[0] > rect[2] or point[1] > rect[3]:
         return False
@@ -362,8 +369,8 @@ class AutoWindow(QtWidgets.QWidget):
         l = len(path_list)
         for i, p in enumerate(path_list):
             self.progress.setValue(int((i+1)/l*100))
-            dcm = pydicom.dcmread(p, stop_before_pixels=True)
             try:
+                dcm = pydicom.dcmread(p, stop_before_pixels=True)
                 if dcm.Modality == 'MG':
                     id.append(dcm.PatientID)
                     acc.append(dcm.AccessionNumber)

@@ -152,7 +152,7 @@ class MaskFrame(QtWidgets.QLabel):
 
     def get_image_area(self):
         image = self.pix.toImage().convertToFormat(QtGui.QImage.Format_Grayscale8)
-        fn = f'.tmp/tmp_msk_{np.random.rand(1)}.png'
+        fn = os.path.expanduser('~') + f'/.MammArea/tmp_msk_{np.random.rand(1)}.png'
         image.save(fn)
         np_img = io.imread(fn)
         np_img[np_img != 0] = 255
@@ -162,7 +162,7 @@ class MaskFrame(QtWidgets.QLabel):
 
     def save_image(self):
         image = self.pix.toImage().convertToFormat(QtGui.QImage.Format_Grayscale8)
-        fn = f'.tmp/tmp_msk_{np.random.rand(1)}.png'
+        fn = os.path.expanduser('~') + f'/.MammArea/tmp_msk_{np.random.rand(1)}.png'
         image.save(fn)
         np_img = io.imread(fn)
         np_img[np_img != 0] = 255
@@ -304,7 +304,7 @@ class AutoWindow(QtWidgets.QWidget):
         self.info.setText('Calculation ongoing...')
         self.progress.setValue(0)
         save = self.mask_box.isChecked()
-        fn = Path(f'.tmp/save_{np.random.rand(1)}')
+        fn = Path(os.path.expanduser('~') + f'/.MammArea/save_{np.random.rand(1)}')
         os.makedirs(fn, exist_ok=True)
         l = len(self.mg_paths)
         for i, p in enumerate(self.mg_paths):
@@ -406,6 +406,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.central = 'init'
         self.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.available_size.width()/2), int(self.available_size.height()/2)), QSize(300, 300)))
         self.setCentralWidget(self.dummy_window)
+        self.show()
 
     def set_manual(self):
         filepath = QtWidgets.QFileDialog.getOpenFileName(None,
@@ -516,14 +517,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def application():
     os.chdir(Path(__file__).parent)
-    shutil.rmtree('.tmp', ignore_errors=True)
-    os.makedirs('.tmp', exist_ok=True)
+    shutil.rmtree(Path(os.path.expanduser('~')) / '.MammArea', ignore_errors=True)
+    os.makedirs(Path(os.path.expanduser('~')) / '.MammArea', exist_ok=True)
     app = QtWidgets.QApplication(sys.argv)
     app.setWindowIcon(QtGui.QIcon('dgl.ico'))
     window = MainWindow(app.primaryScreen().availableGeometry())
     window.show()
     app.exec()
-    shutil.rmtree('.tmp')
+    shutil.rmtree(Path(os.path.expanduser('~')) / '.MammArea')
 
 if __name__ == "__main__":
     application()

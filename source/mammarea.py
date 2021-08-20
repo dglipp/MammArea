@@ -446,7 +446,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def set_init(self):
         self.setGeometry(QtCore.QRect(QtCore.QPoint(int(self.available_size.width()/2), int(self.available_size.height()/2)), QSize(300, 300)))
         self.stack.setCurrentIndex(0)
-        self.removeToolBar(self.editToolbar)
+        try:
+            self.removeToolBar(self.editToolbar)
+        except:
+            pass
         self.central = 'init'
 
     def create_manual_toolbar(self):

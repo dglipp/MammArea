@@ -420,11 +420,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.central = 'manual'
                     self.preferred_folder = str(Path(filepath[0]).parent)
                 except TypeError as e:
-                    print(e)
                     err = QtWidgets.QMessageBox()
                     err.about(self, 'Error', 'Not a MG modality image!')
                 except Exception as e:
-                    print(e)
                     err = QtWidgets.QMessageBox()
                     err.about(self, 'Error', "Not a Dicom file!")
         else:
@@ -432,12 +430,12 @@ class MainWindow(QtWidgets.QMainWindow):
             err.about(self, 'Error', "File path doesn't exist!")
 
     def set_automatic(self):
-        self.create_auto_toolbar()
         filepath = QtWidgets.QFileDialog.getExistingDirectory(None,
                                                                    'Select root folder',
                                                                    self.preferred_folder,
                                                                    QtWidgets.QFileDialog.ShowDirsOnly)
         if filepath:
+            self.create_auto_toolbar()
             self.preferred_folder = str(Path(filepath).parent)
             self.stack.setCurrentIndex(2)
             self.auto_window.createGridLayout(filepath)
